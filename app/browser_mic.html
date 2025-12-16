@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Browser Mic Recorder</title>
+</head>
+<body>
+
+<h3>🎤 Browser Microphone Recording</h3>
+
+<label><b>Label name:</b></label><br>
+<input id="label" placeholder="e.g. harshit_voice, keyboard, switch" />
+<br><br>
+
+<button onclick="startRecording()">▶ Start Recording</button>
+<button onclick="stopRecording()">⏹ Stop & Save</button>
+
+<p id="status"></p>
+
+<script>
+let mediaRecorder;
+let audioChunks = [];
+
+async function startRecording() {
+  audioChunks = [];
+  document.getElementById("status").innerText = "Recording...";
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+
+  mediaRecorder.ondataavailable = event => {
+    audioChunks.push(event.data);
+  };
+
+  mediaRecorder.start();
+}
+
+async function stopRecording() {
+  mediaRecorder.stop();
+
+  mediaRecorder.onstop = async () => {
+    document.getElementById("status").innerText = "Uploading...";
+
+    const blob = new Blob(audioChunks, { type: "audio/wav" });
+    const label = document.getElementById("label").value;
+
+    if (!label) {
+      alert("Please enter a label name");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", blob, "recording.wav");
+    formData.append("label", label);
+
+    await fetch("http://localhost:8000/upload-audio", {
+      method: "POST",
+      body: formData
+    });
+
+    document.getElementById("status").innerText = "Saved on Jetson ✅";
+  };
+}
+</script>
+
+</body>
+</html>

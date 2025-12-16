@@ -1,0 +1,8 @@
+sounddevice
+librosa
+numpy
+matplotlib
+tensorflow
+tensorflow-hub
+streamlit
+plotly
