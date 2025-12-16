@@ -1,63 +1,97 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>Browser Mic Recorder</title>
+  <style>
+    body { font-family: Arial; text-align: center; }
+    canvas { border: 1px solid #ccc; margin-top: 10px; }
+    button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+    #status { margin-top: 10px; font-weight: bold; }
+  </style>
 </head>
 <body>
 
-<h3>🎤 Browser Microphone Recording</h3>
+<h3>🎤 Live Browser Recording</h3>
 
-<label><b>Label name:</b></label><br>
-<input id="label" placeholder="e.g. harshit_voice, keyboard, switch" />
+<label>Label:
+  <input id="label" placeholder="e.g. keyboard, switch, harshit_voice">
+</label>
+
 <br><br>
 
-<button onclick="startRecording()">▶ Start Recording</button>
-<button onclick="stopRecording()">⏹ Stop & Save</button>
+<button onclick="startRecording()">▶ Start</button>
+<button onclick="stopRecording()">⏹ Stop</button>
 
-<p id="status"></p>
+<div id="status"></div>
+
+<canvas id="waveform" width="500" height="100"></canvas>
 
 <script>
-let mediaRecorder;
-let audioChunks = [];
+let audioContext, analyser, dataArray, recorder, stream;
+let chunks = [];
+const canvas = document.getElementById("waveform");
+const ctx = canvas.getContext("2d");
+
+function drawWaveform() {
+  requestAnimationFrame(drawWaveform);
+  analyser.getByteTimeDomainData(dataArray);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+
+  let sliceWidth = canvas.width / dataArray.length;
+  let x = 0;
+
+  for (let i = 0; i < dataArray.length; i++) {
+    let v = dataArray[i] / 128.0;
+    let y = (v * canvas.height) / 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    x += sliceWidth;
+  }
+
+  ctx.stroke();
+}
 
 async function startRecording() {
-  audioChunks = [];
-  document.getElementById("status").innerText = "Recording...";
+  document.getElementById("status").innerText = "🎙 Recording...";
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(stream);
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  dataArray = new Uint8Array(analyser.fftSize);
 
-  mediaRecorder.ondataavailable = event => {
-    audioChunks.push(event.data);
-  };
+  source.connect(analyser);
+  drawWaveform();
 
-  mediaRecorder.start();
+  recorder = new MediaRecorder(stream);
+  chunks = [];
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.start();
 }
 
 async function stopRecording() {
-  mediaRecorder.stop();
+  recorder.stop();
+  stream.getTracks().forEach(track => track.stop());
 
-  mediaRecorder.onstop = async () => {
-    document.getElementById("status").innerText = "Uploading...";
-
-    const blob = new Blob(audioChunks, { type: "audio/wav" });
-    const label = document.getElementById("label").value;
-
-    if (!label) {
-      alert("Please enter a label name");
-      return;
-    }
+  recorder.onstop = async () => {
+    const blob = new Blob(chunks, { type: "audio/wav" });
+    const label = document.getElementById("label").value || "unlabeled";
 
     const formData = new FormData();
     formData.append("file", blob, "recording.wav");
     formData.append("label", label);
 
-    await fetch("http://localhost:8000/upload-audio", {
+    const res = await fetch("http://localhost:8000/upload-audio", {
       method: "POST",
       body: formData
     });
 
-    document.getElementById("status").innerText = "Saved on Jetson ✅";
+    const result = await res.json();
+    document.getElementById("status").innerText =
+      "✅ Audio saved: " + result.filename;
   };
 }
 </script>

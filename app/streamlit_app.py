@@ -2,6 +2,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import os
+import socket
 
 # ---------------- Page Config ----------------
 st.set_page_config(
@@ -10,6 +11,21 @@ st.set_page_config(
 )
 
 st.title("🎧 Ambient AI Sound Monitor (Jetson LAN)")
+
+# ---------------- Helper: Get Jetson IP ----------------
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "localhost"
+    finally:
+        s.close()
+    return ip
+
+JETSON_IP = get_local_ip()
+API_URL = f"http://{JETSON_IP}:8000/upload-audio"
 
 # ---------------- Tabs ----------------
 tab1, tab2, tab3 = st.tabs([
@@ -23,15 +39,23 @@ with tab1:
     st.subheader("Record using YOUR device microphone")
 
     st.info(
-        "This records audio directly from **your browser microphone** "
-        "and saves it on the Jetson Orin Nano for training."
+        "🎙 Audio is recorded directly from **your browser microphone** "
+        "and saved securely on the **Jetson Orin Nano** for training."
     )
 
     html_path = os.path.join("app", "browser_mic.html")
     with open(html_path, "r") as f:
         html_code = f.read()
 
-    components.html(html_code, height=360)
+    # 🔧 Inject correct backend API URL
+    html_code = html_code.replace(
+        "http://localhost:8000/upload-audio",
+        API_URL
+    )
+
+    components.html(html_code, height=520)
+
+    st.caption(f"Backend API: {API_URL}")
 
 # ================= TAB 2 =================
 with tab2:
@@ -44,10 +68,6 @@ with tab2:
 
     if uploaded_file:
         st.success("File uploaded successfully ✅")
-        st.write(
-            "You can use this to contribute training data "
-            "without recording from the browser."
-        )
 
         label = st.text_input(
             "Enter label for this audio",
@@ -68,28 +88,32 @@ with tab2:
 with tab3:
     st.subheader("System Information")
 
-    st.markdown("""
+    st.markdown(f"""
     ### Architecture
-    - App is running on **Jetson Orin Nano**
-    - Hosted locally on the LAN
-    - Users access via browser
-    - Browser captures microphone (Web Audio API)
-    - Audio sent to Jetson via FastAPI
-    - Files saved in `dataset/<label>/`
+    - 🖥️ Backend: **Jetson Orin Nano**
+    - 🌐 Access: Local network (LAN)
+    - 🎙️ Audio capture: **Browser (Web Audio API)**
+    - 🚀 API: **FastAPI**
+    - 💾 Storage: `dataset/<label>/`
 
-    ### Access
+    ### Access URL
     ```
-    http://<jetson-ip>:8501
+    http://{JETSON_IP}:8501
     ```
 
-    ### Dataset Location (on Jetson)
+    ### API Endpoint
+    ```
+    http://{JETSON_IP}:8000/upload-audio
+    ```
+
+    ### Dataset Location (Jetson)
     ```
     ambient-ai-monitor/dataset/
     ```
 
-    This setup is designed for:
+    Designed for:
     - Speaker identification
-    - Sound classification
-    - Keyboard / switch / ambient noise detection
-    - Edge AI data collection
+    - Keyboard / switch classification
+    - Ambient sound monitoring
+    - Edge AI dataset collection
     """)
