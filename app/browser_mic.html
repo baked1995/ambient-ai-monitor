@@ -1,64 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Browser Mic Recorder</title>
+  <meta charset="UTF-8" />
+  <title>Browser Microphone Recorder</title>
+
   <style>
-    body { font-family: Arial; text-align: center; }
-    canvas { border: 1px solid #ccc; margin-top: 10px; }
-    button { margin: 10px; padding: 10px 20px; font-size: 16px; }
-    #status { margin-top: 10px; font-weight: bold; }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #fafafa;
+    }
+
+    input {
+      padding: 8px;
+      width: 260px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    canvas {
+      border: 1px solid #ccc;
+      margin-top: 15px;
+      width: 100%;
+      max-width: 500px;
+      height: 120px;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
   </style>
 </head>
+
 <body>
 
 <h3>🎤 Live Browser Recording</h3>
 
-<label>Label:
-  <input id="label" placeholder="e.g. keyboard, switch, harshit_voice">
-</label>
+<input id="speaker" placeholder="Speaker ID (e.g. harshit)" /><br>
+<input id="category" placeholder="Category (voice, keyboard, noise)" /><br>
 
-<br><br>
+<button id="startBtn" onclick="startRecording()">▶ Start</button>
+<button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop</button>
 
-<button onclick="startRecording()">▶ Start</button>
-<button onclick="stopRecording()">⏹ Stop</button>
+<div id="status">Idle</div>
 
-<div id="status"></div>
-
-<canvas id="waveform" width="500" height="100"></canvas>
+<canvas id="waveform" width="500" height="120"></canvas>
 
 <script>
-let audioContext, analyser, dataArray, recorder, stream;
+let audioContext;
+let analyser;
+let dataArray;
+let mediaRecorder;
+let stream;
 let chunks = [];
+let animationId;
+
 const canvas = document.getElementById("waveform");
 const ctx = canvas.getContext("2d");
 
 function drawWaveform() {
-  requestAnimationFrame(drawWaveform);
+  animationId = requestAnimationFrame(drawWaveform);
+
   analyser.getByteTimeDomainData(dataArray);
-
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.beginPath();
 
+  ctx.beginPath();
   let sliceWidth = canvas.width / dataArray.length;
   let x = 0;
 
   for (let i = 0; i < dataArray.length; i++) {
     let v = dataArray[i] / 128.0;
     let y = (v * canvas.height) / 2;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+
     x += sliceWidth;
   }
 
+  ctx.strokeStyle = "#007bff";
+  ctx.lineWidth = 2;
   ctx.stroke();
 }
 
 async function startRecording() {
+  const speaker = document.getElementById("speaker").value.trim();
+  const category = document.getElementById("category").value.trim();
+
+  if (!speaker || !category) {
+    alert("Please enter speaker and category");
+    return;
+  }
+
   document.getElementById("status").innerText = "🎙 Recording...";
+  document.getElementById("startBtn").disabled = true;
+  document.getElementById("stopBtn").disabled = false;
+
   stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
   audioContext = new AudioContext();
   const source = audioContext.createMediaStreamSource(stream);
+
   analyser = audioContext.createAnalyser();
   analyser.fftSize = 2048;
   dataArray = new Uint8Array(analyser.fftSize);
@@ -66,32 +120,54 @@ async function startRecording() {
   source.connect(analyser);
   drawWaveform();
 
-  recorder = new MediaRecorder(stream);
+  mediaRecorder = new MediaRecorder(stream);
   chunks = [];
-  recorder.ondataavailable = e => chunks.push(e.data);
-  recorder.start();
+
+  mediaRecorder.ondataavailable = e => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
+  mediaRecorder.start();
 }
 
 async function stopRecording() {
-  recorder.stop();
-  stream.getTracks().forEach(track => track.stop());
+  document.getElementById("status").innerText = "⏳ Saving...";
+  document.getElementById("stopBtn").disabled = true;
 
-  recorder.onstop = async () => {
+  mediaRecorder.stop();
+
+  mediaRecorder.onstop = async () => {
+    cancelAnimationFrame(animationId);
+
+    stream.getTracks().forEach(track => track.stop());
+    audioContext.close();
+
     const blob = new Blob(chunks, { type: "audio/wav" });
-    const label = document.getElementById("label").value || "unlabeled";
+
+    const speaker = document.getElementById("speaker").value;
+    const category = document.getElementById("category").value;
 
     const formData = new FormData();
     formData.append("file", blob, "recording.wav");
-    formData.append("label", label);
+    formData.append("speaker", speaker);
+    formData.append("category", category);
 
-    const res = await fetch("http://localhost:8000/upload-audio", {
-      method: "POST",
-      body: formData
-    });
+    try {
+      const res = await fetch("/api/upload-audio", {
+        method: "POST",
+        body: formData
+      });
 
-    const result = await res.json();
-    document.getElementById("status").innerText =
-      "✅ Audio saved: " + result.filename;
+      const result = await res.json();
+      document.getElementById("status").innerText =
+        "✅ Saved: " + result.file;
+
+    } catch (err) {
+      document.getElementById("status").innerText =
+        "❌ Upload failed";
+    }
+
+    document.getElementById("startBtn").disabled = false;
   };
 }
 </script>

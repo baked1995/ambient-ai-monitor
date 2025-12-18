@@ -1,73 +1,88 @@
-# app/api.py
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-import os
-import shutil
+import os, shutil
 from datetime import datetime
 
-# --------------------------------------------------
-# App initialization
-# --------------------------------------------------
 app = FastAPI(title="Ambient AI Audio API")
 
-# Allow browser access from LAN / Streamlit iframe
+# --------------------------------------------------
+# CORS (LAN-safe; tighten later)
+# --------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # OK for LAN, tighten later if needed
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --------------------------------------------------
-# Dataset configuration
+# Paths
 # --------------------------------------------------
-BASE_DATASET_DIR = "dataset"
-os.makedirs(BASE_DATASET_DIR, exist_ok=True)
+BASE_DIR = "data"
+RECORDINGS_DIR = os.path.join(BASE_DIR, "recordings")
+TRAINING_DIR = os.path.join(BASE_DIR, "training")
+RECOGNITION_DIR = os.path.join(BASE_DIR, "recognition")
+
+for d in [RECORDINGS_DIR, TRAINING_DIR, RECOGNITION_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 # --------------------------------------------------
-# Upload endpoint (Browser Mic)
+# Browser Recording / Training Upload
 # --------------------------------------------------
 @app.post("/upload-audio")
 async def upload_audio(
-    label: str = Form(...),
+    speaker: str = Form(...),
+    category: str = Form(...),
     file: UploadFile = Form(...)
 ):
-    """
-    Receives audio from browser microphone (MediaRecorder)
-    and saves it as a WAV file under dataset/<label>/
-    """
+    speaker = speaker.strip()
+    category = category.strip()
 
-    # Validate label
-    label = label.strip()
-    if not label:
-        return {
-            "status": "error",
-            "message": "Label is required"
-        }
+    if not speaker or not category:
+        return {"status": "error", "message": "Speaker and category required"}
 
-    # Create label directory
-    label_dir = os.path.join(BASE_DATASET_DIR, label)
-    os.makedirs(label_dir, exist_ok=True)
+    speaker_dir = os.path.join(TRAINING_DIR, speaker)
+    os.makedirs(speaker_dir, exist_ok=True)
 
-    # Generate filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{label}_{timestamp}.wav"
-    filepath = os.path.join(label_dir, filename)
+    filename = f"{category}_{timestamp}.wav"
+    path = os.path.join(speaker_dir, filename)
 
-    # Save uploaded audio
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
 
     return {
         "status": "success",
-        "message": "Audio saved successfully",
-        "label": label,
-        "filename": filename,
-        "path": filepath
+        "type": "training",
+        "speaker": speaker,
+        "category": category,
+        "file": filename,
+        "path": path
     }
 
 # --------------------------------------------------
-# Health check (optional but useful)
+# Recognition-only Upload (NO training contamination)
+# --------------------------------------------------
+@app.post("/recognition-upload")
+async def recognition_upload(
+    file: UploadFile = Form(...)
+):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"recognition_{timestamp}_{file.filename}"
+    path = os.path.join(RECOGNITION_DIR, filename)
+
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    return {
+        "status": "success",
+        "type": "recognition",
+        "file": filename,
+        "path": path
+    }
+
+# --------------------------------------------------
+# Health
 # --------------------------------------------------
 @app.get("/health")
 def health():
