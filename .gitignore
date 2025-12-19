@@ -1,18 +1,52 @@
+# -------------------------
 # Python
+# -------------------------
 __pycache__/
-*.pyc
+*.py[cod]
 
-# Virtual environment
+# -------------------------
+# Virtual Environments
+# -------------------------
 .venv/
+venv/
+env/
 
-# Audio data
+# -------------------------
+# Runtime / ML Data
+# -------------------------
+data/
 dataset/
 recordings/
+training/
+recognition/
+*.wav
+*.mp3
+*.flac
 
-# OS
+# -------------------------
+# Model artifacts (generated)
+# -------------------------
+*.h5
+*.pb
+*.onnx
+*.tflite
+.cache/
+
+# -------------------------
+# Streamlit
+# -------------------------
+.streamlit/
+
+# -------------------------
+# Logs
+# -------------------------
+*.log
+
+# -------------------------
+# OS / IDE
+# -------------------------
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
+.vscode/
+.idea/
 
